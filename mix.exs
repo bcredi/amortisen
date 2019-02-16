@@ -11,19 +11,21 @@ defmodule Amortisen.MixProject do
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger]
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
       {:decimal, "~> 1.6"},
       {:money, "~> 1.3"},
-      {:timex, "~> 3.5"}
+      {:timex, "~> 3.5"},
+      {:ex_doc, "~> 0.19", only: :dev, runtime: false},
+      {:inch_ex, github: "rrrene/inch_ex", only: [:dev, :test]},
+      {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.0.0-rc.4", only: [:dev], runtime: false}
     ]
   end
 end
