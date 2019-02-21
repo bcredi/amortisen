@@ -9,9 +9,12 @@ defmodule Amortisen.FinancialTransactionTaxes do
   @doc """
   Used to compute the taxes (IOF) for each amortization amount of a schedule table.
   (amortization * (fixed_rate + daily_rate * accumulated_days) / 100)
+
   ## Examples:
+
       iex> amortization_tax_amount(Money.new(892_59), 30)
       %Money{currency: :BRL, amount: 559}
+
       iex> amortization_tax_amount(Money.new(0), 30)
       %Money{currency: :BRL, amount: 0}
   """
@@ -32,11 +35,15 @@ defmodule Amortisen.FinancialTransactionTaxes do
   At Barigui, the financial transaction taxes are funded.
   So this function allow us to recalculate the final financial transaction tax amount
   based on a sum of taxes of each amortization amount.
+
   ## Examples:
+
       iex> compute_funded_tax_amount(Money.new(105_00000), Money.new(349_837))
       %Money{currency: :BRL, amount: 361_895}
+
       iex> compute_funded_tax_amount(Money.new(0), Money.new(349_837))
       %Money{currency: :BRL, amount: 0}
+
       iex> compute_funded_tax_amount(Money.new(105_00000), Money.new(0))
       %Money{currency: :BRL, amount: 0}
   """
