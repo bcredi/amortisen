@@ -46,8 +46,6 @@ defmodule Amortisen.MonthlyExtraPayments do
   """
   @spec monthly_administration_amount(Money.t()) :: Money.t()
   def monthly_administration_amount(%Money{} = outstanding_balance) do
-    @monthly_administration_fee
-    |> Money.parse!()
-    |> Money.add(outstanding_balance)
+    Money.parse!(@monthly_administration_fee)
   end
 end

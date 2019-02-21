@@ -85,10 +85,6 @@ defmodule Amortisen.Schedules.Sac do
     realty_insurance = realty_insurance_amount(realty_value)
     administration = monthly_administration_amount(outstanding_balance)
 
-    IO.inspect life_insurance, label: :life
-    IO.inspect realty_insurance, label: :realty
-    IO.inspect administration, label: :admin
-
     life_insurance
     |> Money.add(realty_insurance)
     |> Money.add(administration)
