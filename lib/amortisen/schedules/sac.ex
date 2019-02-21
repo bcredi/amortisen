@@ -11,16 +11,18 @@ defmodule Amortisen.Schedules.Sac do
           started_at: Date.t(),
           loan_amount: Money.t(),
           total_loan_amount: Money.t(),
+          realty_value: Money.t(),
           payment_term: integer()
         }
 
-  @enforce_keys [:loan_amount, :total_loan_amount, :payment_term, :started_at]
-  defstruct [:loan_amount, :total_loan_amount, :payment_term, :started_at]
+  @enforce_keys [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at]
+  defstruct [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at]
 
   alias Amortisen.CreditPolicy
   alias Amortisen.Schedules.{Line, Sac, Table}
 
   import Amortisen.FinancialTransactionTaxes
+  import Amortisen.MonthlyExtraPayments
 
   @doc """
   Build a complete schedule table using a `%CreditPolicy{}`.
@@ -61,11 +63,13 @@ defmodule Amortisen.Schedules.Sac do
         current_balance =
           compute_outstanding_balance(initial_outstanding_balance, amortization, line_index)
 
+        monthly_amount = monthly_extra_payment_amount(current_balance, params.realty_value)
+
         %Line{
           date: shift_schedule_line_date(line_index, params, credit_policy),
           interest: Money.multiply(previous_balance, interest_rate),
           principal: amortization,
-          monthly_extra_payment: Money.new(0),
+          monthly_extra_payment: monthly_amount,
           outstanding_balance: current_balance
         }
       end)
@@ -74,6 +78,16 @@ defmodule Amortisen.Schedules.Sac do
       schedule_lines: [first_schedule_line(initial_outstanding_balance) | schedule_lines],
       financial_transaction_taxes: funded_iof
     }
+  end
+
+  defp monthly_extra_payment_amount(outstanding_balance, realty_value) do
+    life_insurance = life_insurance_amount(outstanding_balance)
+    realty_insurance = realty_insurance_amount(realty_value)
+    administration = monthly_administration_amount(outstanding_balance)
+
+    life_insurance
+    |> Money.add(realty_insurance)
+    |> Money.add(administration)
   end
 
   defp compute_outstanding_balance(initial_outstanding_balance, _amortization, line_index)

@@ -5,6 +5,7 @@ defmodule Amortisen.Schedules.SacTest do
   alias Amortisen.Schedules.{Sac, Table}
 
   @params %Sac{
+    realty_value: Money.new(15_000_000),
     loan_amount: Money.new(10_000_000),
     total_loan_amount: Money.new(10_500_000),
     payment_term: 120,
