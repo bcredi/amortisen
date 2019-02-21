@@ -128,7 +128,7 @@ defmodule Amortisen.Schedules.Sac do
     |> Enum.reduce(Money.new(0), fn x, acc -> Money.add(x, acc) end)
   end
 
-  @days_in_financial_year 360
+  @days_in_financial_year 365
   defp accumulated_days(0), do: 0
   defp accumulated_days(i) when i * 30 > @days_in_financial_year, do: @days_in_financial_year
   defp accumulated_days(i), do: i * 30
