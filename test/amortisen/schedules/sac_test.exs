@@ -56,7 +56,7 @@ defmodule Amortisen.Schedules.SacTest do
       assert %Money{amount: 0} = first_line.interest
       assert %Money{amount: 0} = first_line.principal
       assert %Money{amount: 0} = first_line.monthly_extra_payment
-      assert %Money{amount: 10_844_606} = first_line.outstanding_balance
+      assert %Money{amount: 10_848_615} = first_line.outstanding_balance
     end
 
     test "returns the schedule lines date shifted by payment lack limit" do

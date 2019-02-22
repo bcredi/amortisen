@@ -83,7 +83,7 @@ defmodule Amortisen.Schedules.Sac do
   defp monthly_extra_payment_amount(outstanding_balance, realty_value) do
     life_insurance = life_insurance_amount(outstanding_balance)
     realty_insurance = realty_insurance_amount(realty_value)
-    administration = monthly_administration_amount(outstanding_balance)
+    administration = monthly_administration_amount()
 
     life_insurance
     |> Money.add(realty_insurance)

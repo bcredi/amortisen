@@ -41,11 +41,11 @@ defmodule Amortisen.MonthlyExtraPayments do
 
   ## Examples
 
-      iex> monthly_administration_amount(%Money{amount: 1_000_000})
+      iex> monthly_administration_amount()
       %Money{amount: 1_000_000}
   """
-  @spec monthly_administration_amount(Money.t()) :: Money.t()
-  def monthly_administration_amount(%Money{} = outstanding_balance) do
+  @spec monthly_administration_amount() :: Money.t()
+  def monthly_administration_amount do
     Money.parse!(@monthly_administration_fee)
   end
 end
