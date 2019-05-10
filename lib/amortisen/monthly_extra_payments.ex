@@ -34,7 +34,7 @@ defmodule Amortisen.MonthlyExtraPayments do
     Money.multiply(realty_value, @realty_insurance_fee / 100)
   end
 
-  @monthly_administration_fee 25.0
+  @monthly_administration_fee 0.0
 
   @doc """
   Returns the sum of `outstanding_balance` with administration fees.

@@ -24,9 +24,9 @@ defmodule Amortisen.MonthlyExtraPaymentsTest do
 
   describe "#monthly_administration_amount/0" do
     test "returns the sum of outstanding balance with the administration fees" do
-      assert %Money{amount: 2500} = MonthlyExtraPayments.monthly_administration_amount()
+      assert %Money{amount: 0} = MonthlyExtraPayments.monthly_administration_amount()
 
-      assert %Money{amount: 2500} = MonthlyExtraPayments.monthly_administration_amount()
+      assert %Money{amount: 0} = MonthlyExtraPayments.monthly_administration_amount()
     end
   end
 end
