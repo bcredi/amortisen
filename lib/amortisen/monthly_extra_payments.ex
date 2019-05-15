@@ -4,7 +4,7 @@ defmodule Amortisen.MonthlyExtraPayments do
   like insurances and administration fees.
   """
 
-  @life_insurance_fee 0.048
+  @life_insurance_fee 0.027
 
   @doc """
   Returns the product of `outstanding_balance` by the insurance fee.
@@ -19,7 +19,7 @@ defmodule Amortisen.MonthlyExtraPayments do
     Money.multiply(outstanding_balance, @life_insurance_fee / 100)
   end
 
-  @realty_insurance_fee 0.025
+  @realty_insurance_fee 0.016
 
   @doc """
   Returns the product of `realty_value` by the insurance fee.
