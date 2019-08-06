@@ -6,9 +6,9 @@ defmodule Amortisen.Schedules.PriceTest do
   alias Amortisen.Schedules.Table
 
   @params %Price{
-    realty_value: Money.new(15_000_000),
+    realty_value: Money.new(30_000_000),
     loan_amount: Money.new(10_000_000),
-    total_loan_amount: Money.new(10_500_000),
+    total_loan_amount: Money.new(10_545_000),
     payment_term: 120,
     started_at: Timex.today()
   }
@@ -16,8 +16,8 @@ defmodule Amortisen.Schedules.PriceTest do
   describe "#build_schedule_table/2" do
     test "returns a table struct" do
       credit_policy = %CreditPolicy{
-        payment_lack_limit: 30,
-        interest_rate: Decimal.from_float(1.14)
+        payment_lack_limit: 60,
+        interest_rate: Decimal.from_float(1.09)
       }
 
       assert %Table{schedule_lines: lines, financial_transaction_taxes: iof} =
@@ -35,7 +35,7 @@ defmodule Amortisen.Schedules.PriceTest do
         interest_rate: Decimal.from_float(1.14)
       }
 
-      interest = Price.interest_for_first_installment(credit_policy, @params)
+      interest = Price.interest_for_installment(credit_policy, @params)
       assert is_float(interest)
       assert 0.015865271002266024 == interest
     end
@@ -50,7 +50,7 @@ defmodule Amortisen.Schedules.PriceTest do
 
       interest = Price.interest_for_outstanding_balance(credit_policy)
       assert is_float(interest)
-      assert 1.4815439999999995 == interest
+      assert 1.0345913615440003 == interest
     end
 
     test "returns 1 when payment lack limit is zero" do
@@ -68,7 +68,7 @@ defmodule Amortisen.Schedules.PriceTest do
         interest_rate: Decimal.from_float(1.14)
       }
 
-      assert 1.14 == Price.interest_for_outstanding_balance(credit_policy)
+      assert 1.0114 == Price.interest_for_outstanding_balance(credit_policy)
     end
 
     test "returns lower interest then expected when payment lack limit is less than 30" do
@@ -79,10 +79,10 @@ defmodule Amortisen.Schedules.PriceTest do
 
       assert 1.0 == Price.interest_for_outstanding_balance(credit_policy)
 
-      assert 1.1350317835392 ==
+      assert 1.0110179143743372 ==
                Price.interest_for_outstanding_balance(%{credit_policy | payment_lack_limit: 29})
 
-      assert 1.091280933846754 ==
+      assert 1.0075856326798025 ==
                Price.interest_for_outstanding_balance(%{credit_policy | payment_lack_limit: 20})
     end
   end
