@@ -4,6 +4,7 @@ defmodule Amortisen.Schedules.Price do
   alias Amortisen.Schedules.Table
 
   import Amortisen.FinancialTransactionTaxes
+  import Amortisen.MonthlyExtraPayments
 
   @type t :: %__MODULE__{
           started_at: Date.t(),
@@ -35,16 +36,24 @@ defmodule Amortisen.Schedules.Price do
 
     sum = sum_amortizations_taxes(amortizations, credit_policy.payment_lack_limit)
 
-    IO.inspect(outstanding_balance_amount, label: :initial_outstanding_balance)
-    IO.inspect(installment_amount, label: :installment)
-    IO.inspect(List.last(amortizations), label: :first_amortization)
-    IO.inspect(List.first(amortizations), label: :last_amortization)
+    funded_taxes = compute_funded_tax_amount(params.total_loan_amount, sum)
 
-    IO.inspect(Enum.reduce(amortizations, Money.new(0), fn a, acc -> Money.add(a, acc) end),
-      label: :sum_amortization
-    )
+    outstanding_balance_amount =
+      Money.multiply(
+        Money.add(params.total_loan_amount, funded_taxes),
+        outstanding_balance_interest
+      )
 
-    IO.inspect(sum, label: :sum_taxes)
+    installment_amount = Money.multiply(outstanding_balance_amount, installment_interest)
+
+    installments =
+      installments(
+        installment_amount,
+        outstanding_balance_amount,
+        credit_policy,
+        params,
+        params.payment_term
+      )
 
     %Table{
       schedule_lines: [],
@@ -52,14 +61,14 @@ defmodule Amortisen.Schedules.Price do
     }
   end
 
-  def amortizations(_installment_amount, _outstanding_balance_amount, _credit_policy, 0), do: []
+  defp amortizations(_installment_amount, _outstanding_balance_amount, _credit_policy, 0), do: []
 
-  def amortizations(
-        installment_amount,
-        outstanding_balance_amount,
-        %CreditPolicy{interest_rate: interest} = credit_policy,
-        i
-      ) do
+  defp amortizations(
+         installment_amount,
+         outstanding_balance_amount,
+         %CreditPolicy{interest_rate: interest} = credit_policy,
+         i
+       ) do
     interest =
       interest
       |> Decimal.div(100)
@@ -76,11 +85,46 @@ defmodule Amortisen.Schedules.Price do
     ) ++ [amortization]
   end
 
-  @doc """
-  Returns the interest for the outstanding balance.
-  The formula is f(x) = i * (payment lack limit / 30).
-  """
-  def interest_for_outstanding_balance(%CreditPolicy{} = credit_policy) do
+  defp installments(_installment_amount, _outstanding_balance_amount, _credit_policy, _param, 0),
+    do: []
+
+  defp installments(
+         installment_amount,
+         outstanding_balance_amount,
+         %CreditPolicy{interest_rate: interest} = credit_policy,
+         %Price{} = params,
+         i
+       ) do
+    interest =
+      interest
+      |> Decimal.div(100)
+      |> Decimal.to_float()
+
+    interest_amount = Money.multiply(outstanding_balance_amount, interest)
+    amortization = Money.subtract(installment_amount, interest_amount)
+
+    installments(
+      installment_amount,
+      Money.subtract(outstanding_balance_amount, amortization),
+      credit_policy,
+      params,
+      i - 1
+    ) ++
+      [
+        %{
+          date:
+            Timex.shift(params.started_at,
+              months: div(credit_policy.payment_lack_limit, 30) + i - 1
+            ),
+          amortization: amortization,
+          outstanding_balance: Money.subtract(outstanding_balance_amount, amortization),
+          interest: Money.subtract(installment_amount, amortization),
+          charges: monthly_extra_payment_amount(outstanding_balance_amount, params.realty_value)
+        }
+      ]
+  end
+
+  defp interest_for_outstanding_balance(%CreditPolicy{} = credit_policy) do
     credit_policy.interest_rate
     |> Decimal.div(100)
     |> Decimal.add(1)
@@ -88,12 +132,9 @@ defmodule Amortisen.Schedules.Price do
     |> :math.pow(credit_policy.payment_lack_limit / 30)
   end
 
-  @doc """
-  Returns the interest for the first installment.
-  """
-  def interest_for_installment(%CreditPolicy{} = credit_policy, %Price{
-        payment_term: payment_term
-      }) do
+  defp interest_for_installment(%CreditPolicy{} = credit_policy, %Price{
+         payment_term: payment_term
+       }) do
     payment_lack_limit = credit_policy.payment_lack_limit / 30
 
     interest_rate =
@@ -114,6 +155,16 @@ defmodule Amortisen.Schedules.Price do
       amortization_tax_amount(amortization, days)
     end)
     |> Enum.reduce(Money.new(0), fn x, acc -> Money.add(x, acc) end)
+  end
+
+  defp monthly_extra_payment_amount(outstanding_balance, realty_value) do
+    life_insurance = life_insurance_amount(outstanding_balance)
+    realty_insurance = realty_insurance_amount(realty_value)
+    administration = monthly_administration_amount()
+
+    life_insurance
+    |> Money.add(realty_insurance)
+    |> Money.add(administration)
   end
 
   @days_in_financial_year 365
