@@ -17,6 +17,7 @@ defmodule Amortisen.FinancialTransactionTaxes do
 
       iex> amortization_tax_amount(Money.new(0), 30)
       %Money{currency: :BRL, amount: 0}
+
   """
   @spec amortization_tax_amount(Money.t(), integer()) :: Money.t()
   def amortization_tax_amount(%Money{} = amortization, accumulated_days)
@@ -46,6 +47,7 @@ defmodule Amortisen.FinancialTransactionTaxes do
 
       iex> compute_funded_tax_amount(Money.new(105_00000), Money.new(0))
       %Money{currency: :BRL, amount: 0}
+
   """
   @spec amortization_tax_amount(Money.t(), Money.t()) :: Money.t()
   def compute_funded_tax_amount(%Money{} = loan_amount, %Money{} = amortizatios_taxes_amount) do

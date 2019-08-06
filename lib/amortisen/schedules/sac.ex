@@ -39,6 +39,7 @@ defmodule Amortisen.Schedules.Sac do
 
       iex> build_schedule_table(params, credit_policy)
       %Table{}
+
   """
   @spec build_schedule_table(Sac.t(), CreditPolicy.t()) :: Table.t()
   def build_schedule_table(%Sac{} = params, %CreditPolicy{} = credit_policy) do
