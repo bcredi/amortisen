@@ -1,7 +1,8 @@
-defmodule Amortisen.Schedules.Price do
+defmodule Amortisen.Schedules.Pricex do
   alias Amortisen.CreditPolicy
-  alias Amortisen.Schedules.Price
+  alias Amortisen.Schedules.Pricex, as: Price
   alias Amortisen.Schedules.Table
+  alias Amortisen.Schedules.Line
 
   import Amortisen.FinancialTransactionTaxes
   import Amortisen.MonthlyExtraPayments
@@ -20,14 +21,13 @@ defmodule Amortisen.Schedules.Price do
   def build_schedule_table(%Price{} = params, %CreditPolicy{} = credit_policy) do
     installment_interest = interest_for_installment(credit_policy, params)
     installment_amount = Money.multiply(params.total_loan_amount, installment_interest)
-
     outstanding_balance_interest = interest_for_outstanding_balance(credit_policy)
 
     outstanding_balance_amount =
       Money.multiply(params.total_loan_amount, outstanding_balance_interest)
 
     amortizations =
-      amortizations(
+      build_amortization_list(
         installment_amount,
         outstanding_balance_amount,
         credit_policy,
@@ -35,7 +35,6 @@ defmodule Amortisen.Schedules.Price do
       )
 
     sum = sum_amortizations_taxes(amortizations, credit_policy.payment_lack_limit)
-
     funded_taxes = compute_funded_tax_amount(params.total_loan_amount, sum)
 
     outstanding_balance_amount =
@@ -46,38 +45,63 @@ defmodule Amortisen.Schedules.Price do
 
     installment_amount = Money.multiply(outstanding_balance_amount, installment_interest)
 
-    installments =
-      installments(
-        installment_amount,
-        outstanding_balance_amount,
-        credit_policy,
-        params,
-        params.payment_term
-      )
-
     %Table{
-      schedule_lines: [],
-      financial_transaction_taxes: Money.new(0)
+      schedule_lines: build_schedule_lines(params, credit_policy, installment_amount),
+      financial_transaction_taxes: funded_taxes
     }
   end
 
-  defp amortizations(_installment_amount, _outstanding_balance_amount, _credit_policy, 0), do: []
+  defp build_schedule_lines(%Price{payment_term: 1}, _credit_policy, _installment_amount) do
+    [
+      %Line{
+        date: Date.utc_today(),
+        principal: Money.new(0),
+        outstanding_balance: Money.new(0),
+        interest: Money.new(0),
+        monthly_extra_payment: Money.new(0)
+      }
+    ]
+  end
 
-  defp amortizations(
+  defp build_schedule_lines(params, credit_policy, installment_amount) do
+    interest = Decimal.div(credit_policy.interest_rate, 100) |> Decimal.to_float()
+    interest_amount = Money.multiply(params.total_loan_amount, interest)
+    amortization = Money.subtract(installment_amount, interest_amount)
+    outstanding_balance = Money.subtract(params.total_loan_amount, amortization)
+    extra_payments = monthly_extra_payment_amount(outstanding_balance, params.realty_value)
+
+    params = %{
+      params
+      | total_loan_amount: outstanding_balance,
+        payment_term: params.payment_term - 1
+    }
+
+    [
+      %Line{
+        date: Date.utc_today(),
+        principal: amortization,
+        outstanding_balance: outstanding_balance,
+        interest: interest_amount,
+        monthly_extra_payment: extra_payments
+      }
+    ] ++ build_schedule_lines(params, credit_policy, installment_amount)
+  end
+
+  defp build_amortization_list(_, _, _, 0) do
+    []
+  end
+
+  defp build_amortization_list(
          installment_amount,
          outstanding_balance_amount,
          %CreditPolicy{interest_rate: interest} = credit_policy,
          i
        ) do
-    interest =
-      interest
-      |> Decimal.div(100)
-      |> Decimal.to_float()
-
+    interest = interest |> Decimal.div(100) |> Decimal.to_float()
     interest_amount = Money.multiply(outstanding_balance_amount, interest)
     amortization = Money.subtract(installment_amount, interest_amount)
 
-    amortizations(
+    build_amortization_list(
       installment_amount,
       Money.subtract(outstanding_balance_amount, amortization),
       credit_policy,
@@ -85,43 +109,20 @@ defmodule Amortisen.Schedules.Price do
     ) ++ [amortization]
   end
 
-  defp installments(_installment_amount, _outstanding_balance_amount, _credit_policy, _param, 0),
-    do: []
-
-  defp installments(
-         installment_amount,
-         outstanding_balance_amount,
-         %CreditPolicy{interest_rate: interest} = credit_policy,
-         %Price{} = params,
-         i
-       ) do
+  def amortization_amount(installment_amount, outstanding_balance_amount, %CreditPolicy{
+        interest_rate: interest
+      }) do
     interest =
       interest
       |> Decimal.div(100)
       |> Decimal.to_float()
 
     interest_amount = Money.multiply(outstanding_balance_amount, interest)
-    amortization = Money.subtract(installment_amount, interest_amount)
+    Money.subtract(installment_amount, interest_amount)
+  end
 
-    installments(
-      installment_amount,
-      Money.subtract(outstanding_balance_amount, amortization),
-      credit_policy,
-      params,
-      i - 1
-    ) ++
-      [
-        %{
-          date:
-            Timex.shift(params.started_at,
-              months: div(credit_policy.payment_lack_limit, 30) + i - 1
-            ),
-          amortization: amortization,
-          outstanding_balance: Money.subtract(outstanding_balance_amount, amortization),
-          interest: Money.subtract(installment_amount, amortization),
-          charges: monthly_extra_payment_amount(outstanding_balance_amount, params.realty_value)
-        }
-      ]
+  def outstanding_balance_amount(%Price{total_loan_amount: total_loan_amount}, interest) do
+    Money.multiply(total_loan_amount, interest)
   end
 
   defp interest_for_outstanding_balance(%CreditPolicy{} = credit_policy) do
@@ -158,13 +159,14 @@ defmodule Amortisen.Schedules.Price do
   end
 
   defp monthly_extra_payment_amount(outstanding_balance, realty_value) do
-    life_insurance = life_insurance_amount(outstanding_balance)
-    realty_insurance = realty_insurance_amount(realty_value)
-    administration = monthly_administration_amount()
+    # life_insurance = life_insurance_amount(outstanding_balance)
+    # realty_insurance = realty_insurance_amount(realty_value)
+    # administration = monthly_administration_amount()
 
-    life_insurance
-    |> Money.add(realty_insurance)
-    |> Money.add(administration)
+    # life_insurance
+    # |> Money.add(realty_insurance)
+    # |> Money.add(administration)
+    Money.new(0)
   end
 
   @days_in_financial_year 365
