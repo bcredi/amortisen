@@ -1,7 +1,7 @@
 defmodule Amortisen.MonthlyExtraPayments do
   @moduledoc """
   Provide functions to calculate monthly extra payments,
-  like insurances and administration fees.
+  like insurances.
   """
 
   @doc """
