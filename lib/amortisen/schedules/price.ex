@@ -1,8 +1,16 @@
 defmodule Amortisen.Schedules.Pricex do
+  @moduledoc """
+  Defines a `Price` struct and a function to build a complete schedule table
+  using a Price amortization system.
+
+  The `Price` struct is defined to be used with `build_schedule_table/4` function.
+  It represents the required params to calculate a complete schedule table.
+  """
+
   alias Amortisen.CreditPolicy
+  alias Amortisen.Schedules.Line
   alias Amortisen.Schedules.Pricex, as: Price
   alias Amortisen.Schedules.Table
-  alias Amortisen.Schedules.Line
 
   import Amortisen.FinancialTransactionTaxes
   import Amortisen.MonthlyExtraPayments
@@ -18,7 +26,12 @@ defmodule Amortisen.Schedules.Pricex do
   @enforce_keys [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at]
   defstruct [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at]
 
-  def build_schedule_table(%Price{} = params, %CreditPolicy{} = credit_policy) do
+  def build_schedule_table(
+        %Price{} = params,
+        %CreditPolicy{} = credit_policy,
+        life_insurance_fee,
+        realty_insurance_fee
+      ) do
     installment_interest = interest_for_installment(credit_policy, params)
     installment_amount = Money.multiply(params.total_loan_amount, installment_interest)
     outstanding_balance_interest = interest_for_outstanding_balance(credit_policy)
@@ -46,29 +59,48 @@ defmodule Amortisen.Schedules.Pricex do
     installment_amount = Money.multiply(outstanding_balance_amount, installment_interest)
 
     %Table{
-      schedule_lines: build_schedule_lines(params, credit_policy, installment_amount),
+      schedule_lines:
+        build_schedule_lines(
+          params,
+          credit_policy,
+          installment_amount,
+          life_insurance_fee,
+          realty_insurance_fee
+        ),
       financial_transaction_taxes: funded_taxes
     }
   end
 
-  defp build_schedule_lines(%Price{payment_term: 1}, _credit_policy, _installment_amount) do
+  defp build_schedule_lines(
+         %Price{payment_term: 1},
+         _credit_policy,
+         _installment_amount,
+         _life_insurance_fee,
+         _realty_insurance_fee
+       ) do
     [
       %Line{
         date: Date.utc_today(),
         principal: Money.new(0),
         outstanding_balance: Money.new(0),
         interest: Money.new(0),
-        monthly_extra_payment: Money.new(0)
+        life_insurance: Money.new(0),
+        realty_insurance: Money.new(0)
       }
     ]
   end
 
-  defp build_schedule_lines(params, credit_policy, installment_amount) do
-    interest = Decimal.div(credit_policy.interest_rate, 100) |> Decimal.to_float()
+  defp build_schedule_lines(
+         params,
+         credit_policy,
+         installment_amount,
+         life_insurance_fee,
+         realty_insurance_fee
+       ) do
+    interest = credit_policy.interest_rate |> Decimal.div(100) |> Decimal.to_float()
     interest_amount = Money.multiply(params.total_loan_amount, interest)
     amortization = Money.subtract(installment_amount, interest_amount)
     outstanding_balance = Money.subtract(params.total_loan_amount, amortization)
-    extra_payments = monthly_extra_payment_amount(outstanding_balance, params.realty_value)
 
     params = %{
       params
@@ -82,9 +114,17 @@ defmodule Amortisen.Schedules.Pricex do
         principal: amortization,
         outstanding_balance: outstanding_balance,
         interest: interest_amount,
-        monthly_extra_payment: extra_payments
+        life_insurance: life_insurance_amount(outstanding_balance, life_insurance_fee),
+        realty_insurance: realty_insurance_amount(params.realty_value, realty_insurance_fee)
       }
-    ] ++ build_schedule_lines(params, credit_policy, installment_amount)
+    ] ++
+      build_schedule_lines(
+        params,
+        credit_policy,
+        installment_amount,
+        life_insurance_fee,
+        realty_insurance_fee
+      )
   end
 
   defp build_amortization_list(_, _, _, 0) do
@@ -156,17 +196,6 @@ defmodule Amortisen.Schedules.Pricex do
       amortization_tax_amount(amortization, days)
     end)
     |> Enum.reduce(Money.new(0), fn x, acc -> Money.add(x, acc) end)
-  end
-
-  defp monthly_extra_payment_amount(outstanding_balance, realty_value) do
-    # life_insurance = life_insurance_amount(outstanding_balance)
-    # realty_insurance = realty_insurance_amount(realty_value)
-    # administration = monthly_administration_amount()
-
-    # life_insurance
-    # |> Money.add(realty_insurance)
-    # |> Money.add(administration)
-    Money.new(0)
   end
 
   @days_in_financial_year 365

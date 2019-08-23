@@ -3,7 +3,7 @@ defmodule Amortisen.Schedules.Sac do
   Defines a `Sac` struct and a function to build a complete schedule table
   using a SAC amortization system.
 
-  The `Sac` struct is defined to be used with `build_schedule_table/2` function.
+  The `Sac` struct is defined to be used with `build_schedule_table/4` function.
   It represents the required params to calculate a complete schedule table.
   """
 
@@ -41,11 +41,16 @@ defmodule Amortisen.Schedules.Sac do
       %Table{}
 
   """
-  @spec build_schedule_table(Sac.t(), CreditPolicy.t()) :: Table.t()
-  def build_schedule_table(%Sac{} = params, %CreditPolicy{} = credit_policy) do
+  @spec build_schedule_table(Sac.t(), CreditPolicy.t(), float(), float()) :: Table.t()
+  def build_schedule_table(
+        %Sac{} = params,
+        %CreditPolicy{} = credit_policy,
+        life_insurance_fee,
+        realty_insurance_fee
+      ) do
     amortizations = Money.divide(params.total_loan_amount, params.payment_term)
     amortizations_iof = sum_amortizations_taxes(amortizations, credit_policy.payment_lack_limit)
-    funded_iof = compute_funded_tax_amount(params.loan_amount, amortizations_iof)
+    funded_iof = compute_funded_tax_amount(params.total_loan_amount, amortizations_iof)
     initial_outstanding_balance = Money.add(params.total_loan_amount, funded_iof)
     amortizations = Money.divide(initial_outstanding_balance, params.payment_term)
 
@@ -64,13 +69,12 @@ defmodule Amortisen.Schedules.Sac do
         current_balance =
           compute_outstanding_balance(initial_outstanding_balance, amortization, line_index)
 
-        monthly_amount = monthly_extra_payment_amount(current_balance, params.realty_value)
-
         %Line{
           date: shift_schedule_line_date(line_index, params, credit_policy),
           interest: Money.multiply(previous_balance, interest_rate),
           principal: amortization,
-          monthly_extra_payment: monthly_amount,
+          life_insurance: life_insurance_amount(current_balance, life_insurance_fee),
+          realty_insurance: realty_insurance_amount(params.realty_value, realty_insurance_fee),
           outstanding_balance: current_balance
         }
       end)
@@ -79,16 +83,6 @@ defmodule Amortisen.Schedules.Sac do
       schedule_lines: [first_schedule_line(initial_outstanding_balance) | schedule_lines],
       financial_transaction_taxes: funded_iof
     }
-  end
-
-  defp monthly_extra_payment_amount(outstanding_balance, realty_value) do
-    life_insurance = life_insurance_amount(outstanding_balance)
-    realty_insurance = realty_insurance_amount(realty_value)
-    administration = monthly_administration_amount()
-
-    life_insurance
-    |> Money.add(realty_insurance)
-    |> Money.add(administration)
   end
 
   defp compute_outstanding_balance(initial_outstanding_balance, _amortization, line_index)
@@ -113,7 +107,8 @@ defmodule Amortisen.Schedules.Sac do
       date: Timex.today(),
       interest: Money.new(0),
       principal: Money.new(0),
-      monthly_extra_payment: Money.new(0),
+      life_insurance: Money.new(0),
+      realty_insurance: Money.new(0),
       outstanding_balance: initial_outstanding_balance
     }
   end
