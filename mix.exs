@@ -4,7 +4,7 @@ defmodule Amortisen.MixProject do
   def project do
     [
       app: :amortisen,
-      version: "0.3.0",
+      version: "0.3",
       elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
