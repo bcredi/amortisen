@@ -7,10 +7,25 @@ defmodule Amortisen.Schedules.Line do
           date: Date.t(),
           interest: Money.t(),
           principal: Money.t(),
-          monthly_extra_payment: Money.t(),
+          life_insurance: Money.t(),
+          realty_insurance: Money.t(),
           outstanding_balance: Money.t()
         }
 
-  @enforce_keys [:date, :interest, :principal, :monthly_extra_payment, :outstanding_balance]
-  defstruct [:date, :interest, :principal, :monthly_extra_payment, :outstanding_balance]
+  @enforce_keys [
+    :date,
+    :interest,
+    :principal,
+    :life_insurance,
+    :realty_insurance,
+    :outstanding_balance
+  ]
+  defstruct [
+    :date,
+    :interest,
+    :principal,
+    :life_insurance,
+    :realty_insurance,
+    :outstanding_balance
+  ]
 end
