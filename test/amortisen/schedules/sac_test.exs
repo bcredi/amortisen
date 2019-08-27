@@ -32,6 +32,24 @@ defmodule Amortisen.Schedules.SacTest do
                )
     end
 
+    test "return a table struct with schedule lines and financial equals zero" do
+      credit_policy = %CreditPolicy{
+        payment_lack_limit: 30,
+        interest_rate: Decimal.from_float(1.14)
+      }
+
+      table =
+        Sac.build_schedule_table(
+          Map.put(@params, :has_iof, false),
+          credit_policy,
+          @life_insurance_fee,
+          @realty_insurance_fee
+        )
+
+      assert %Table{} = table
+      assert Money.to_string(table.financial_transaction_taxes) == "0.00"
+    end
+
     test "return a table struct with total lines equal to payment term + 1" do
       credit_policy = %CreditPolicy{
         payment_lack_limit: 30,

@@ -12,11 +12,19 @@ defmodule Amortisen.Schedules.Sac do
           loan_amount: Money.t(),
           total_loan_amount: Money.t(),
           realty_value: Money.t(),
-          payment_term: integer()
+          payment_term: integer(),
+          has_iof: boolean()
         }
 
   @enforce_keys [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at]
-  defstruct [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at]
+  defstruct [
+    :loan_amount,
+    :total_loan_amount,
+    :payment_term,
+    :realty_value,
+    :started_at,
+    has_iof: true
+  ]
 
   alias Amortisen.CreditPolicy
   alias Amortisen.Schedules.{Line, Sac, Table}
@@ -43,7 +51,7 @@ defmodule Amortisen.Schedules.Sac do
   """
   @spec build_schedule_table(Sac.t(), CreditPolicy.t(), float(), float()) :: Table.t()
   def build_schedule_table(
-        %Sac{} = params,
+        %Sac{has_iof: true} = params,
         %CreditPolicy{} = credit_policy,
         life_insurance_fee,
         realty_insurance_fee
@@ -54,35 +62,77 @@ defmodule Amortisen.Schedules.Sac do
     initial_outstanding_balance = Money.add(params.total_loan_amount, funded_iof)
     amortizations = Money.divide(initial_outstanding_balance, params.payment_term)
 
-    schedule_lines =
-      amortizations
-      |> Enum.with_index(1)
-      |> Enum.map(fn {amortization, line_index} ->
-        interest_rate =
-          credit_policy.interest_rate
-          |> Decimal.div(100)
-          |> Decimal.to_float()
-
-        previous_balance =
-          compute_outstanding_balance(initial_outstanding_balance, amortization, line_index - 1)
-
-        current_balance =
-          compute_outstanding_balance(initial_outstanding_balance, amortization, line_index)
-
-        %Line{
-          date: shift_schedule_line_date(line_index, params, credit_policy),
-          interest: Money.multiply(previous_balance, interest_rate),
-          principal: amortization,
-          life_insurance: life_insurance_amount(current_balance, life_insurance_fee),
-          realty_insurance: realty_insurance_amount(params.realty_value, realty_insurance_fee),
-          outstanding_balance: current_balance
-        }
-      end)
-
     %Table{
-      schedule_lines: [first_schedule_line(initial_outstanding_balance) | schedule_lines],
+      schedule_lines: [
+        first_schedule_line(initial_outstanding_balance)
+        | build_schedule_lines(
+            amortizations,
+            credit_policy,
+            initial_outstanding_balance,
+            params,
+            life_insurance_fee,
+            realty_insurance_fee
+          )
+      ],
       financial_transaction_taxes: funded_iof
     }
+  end
+
+  def build_schedule_table(
+        %Sac{has_iof: false} = params,
+        %CreditPolicy{} = credit_policy,
+        life_insurance_fee,
+        realty_insurance_fee
+      ) do
+    amortizations = Money.divide(params.total_loan_amount, params.payment_term)
+
+    %Table{
+      schedule_lines: [
+        first_schedule_line(params.total_loan_amount)
+        | build_schedule_lines(
+            amortizations,
+            credit_policy,
+            params.total_loan_amount,
+            params,
+            life_insurance_fee,
+            realty_insurance_fee
+          )
+      ],
+      financial_transaction_taxes: Money.new(0)
+    }
+  end
+
+  defp build_schedule_lines(
+         amortizations,
+         credit_policy,
+         initial_outstanding_balance,
+         params,
+         life_insurance_fee,
+         realty_insurance_fee
+       ) do
+    amortizations
+    |> Enum.with_index(1)
+    |> Enum.map(fn {amortization, line_index} ->
+      interest_rate =
+        credit_policy.interest_rate
+        |> Decimal.div(100)
+        |> Decimal.to_float()
+
+      previous_balance =
+        compute_outstanding_balance(initial_outstanding_balance, amortization, line_index - 1)
+
+      current_balance =
+        compute_outstanding_balance(initial_outstanding_balance, amortization, line_index)
+
+      %Line{
+        date: shift_schedule_line_date(line_index, params, credit_policy),
+        interest: Money.multiply(previous_balance, interest_rate),
+        principal: amortization,
+        life_insurance: life_insurance_amount(current_balance, life_insurance_fee),
+        realty_insurance: realty_insurance_amount(params.realty_value, realty_insurance_fee),
+        outstanding_balance: current_balance
+      }
+    end)
   end
 
   defp compute_outstanding_balance(initial_outstanding_balance, _amortization, line_index)
