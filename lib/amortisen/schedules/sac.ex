@@ -16,14 +16,7 @@ defmodule Amortisen.Schedules.Sac do
           has_iof: boolean()
         }
 
-  @enforce_keys [
-    :loan_amount,
-    :total_loan_amount,
-    :payment_term,
-    :realty_value,
-    :started_at,
-    :has_iof
-  ]
+  @enforce_keys [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at]
   defstruct [
     :loan_amount,
     :total_loan_amount,
