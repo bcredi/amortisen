@@ -16,8 +16,22 @@ defmodule Amortisen.Schedules.Sac do
           has_iof: boolean()
         }
 
-  @enforce_keys [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at, :has_iof]
-  defstruct [:loan_amount, :total_loan_amount, :payment_term, :realty_value, :started_at, has_iof: true]
+  @enforce_keys [
+    :loan_amount,
+    :total_loan_amount,
+    :payment_term,
+    :realty_value,
+    :started_at,
+    :has_iof
+  ]
+  defstruct [
+    :loan_amount,
+    :total_loan_amount,
+    :payment_term,
+    :realty_value,
+    :started_at,
+    has_iof: true
+  ]
 
   alias Amortisen.CreditPolicy
   alias Amortisen.Schedules.{Line, Sac, Table}
@@ -56,7 +70,17 @@ defmodule Amortisen.Schedules.Sac do
     amortizations = Money.divide(initial_outstanding_balance, params.payment_term)
 
     %Table{
-      schedule_lines: [first_schedule_line(initial_outstanding_balance) | build_schedule_lines(amortizations, credit_policy, initial_outstanding_balance, params, life_insurance_fee, realty_insurance_fee)],
+      schedule_lines: [
+        first_schedule_line(initial_outstanding_balance)
+        | build_schedule_lines(
+            amortizations,
+            credit_policy,
+            initial_outstanding_balance,
+            params,
+            life_insurance_fee,
+            realty_insurance_fee
+          )
+      ],
       financial_transaction_taxes: funded_iof
     }
   end
@@ -70,12 +94,29 @@ defmodule Amortisen.Schedules.Sac do
     amortizations = Money.divide(params.total_loan_amount, params.payment_term)
 
     %Table{
-      schedule_lines: [first_schedule_line(params.total_loan_amount) | build_schedule_lines(amortizations, credit_policy, params.total_loan_amount, params, life_insurance_fee, realty_insurance_fee)],
+      schedule_lines: [
+        first_schedule_line(params.total_loan_amount)
+        | build_schedule_lines(
+            amortizations,
+            credit_policy,
+            params.total_loan_amount,
+            params,
+            life_insurance_fee,
+            realty_insurance_fee
+          )
+      ],
       financial_transaction_taxes: Money.new(0)
     }
   end
 
-  defp build_schedule_lines(amortizations, credit_policy, initial_outstanding_balance, params, life_insurance_fee, realty_insurance_fee) do
+  defp build_schedule_lines(
+         amortizations,
+         credit_policy,
+         initial_outstanding_balance,
+         params,
+         life_insurance_fee,
+         realty_insurance_fee
+       ) do
     amortizations
     |> Enum.with_index(1)
     |> Enum.map(fn {amortization, line_index} ->
