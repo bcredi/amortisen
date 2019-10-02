@@ -31,7 +31,7 @@ defmodule Amortisen.MixProject do
       {:timex, "~> 3.5"},
       {:ex_doc, "~> 0.19", only: :dev, runtime: false},
       {:inch_ex, github: "rrrene/inch_ex", only: [:dev, :test]},
-      {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
       {:dialyxir, "~> 1.0.0-rc.4", only: [:dev], runtime: false}
     ]
