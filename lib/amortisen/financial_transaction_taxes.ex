@@ -47,7 +47,7 @@ defmodule Amortisen.FinancialTransactionTaxes do
       iex> compute_funded_tax_amount(Money.new(105_00000), Money.new(0))
       %Money{currency: :BRL, amount: 0}
   """
-  @spec amortization_tax_amount(Money.t(), Money.t()) :: Money.t()
+  @spec compute_funded_tax_amount(Money.t(), Money.t()) :: Money.t()
   def compute_funded_tax_amount(%Money{} = loan_amount, %Money{} = amortizatios_taxes_amount) do
     y = Money.subtract(loan_amount, amortizatios_taxes_amount)
     x = Money.multiply(loan_amount, amortizatios_taxes_amount.amount / 100)
