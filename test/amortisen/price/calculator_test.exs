@@ -4,6 +4,8 @@ defmodule Amortisen.Price.CalculatorTest do
   alias Amortisen.Price.{Calculator, Input}
   alias Amortisen.CreditPolicy
 
+  @zero_money Money.new(0_00)
+
   @price_input %Input{
     number_of_days_until_first_payment: 90,
     user_requested_value: Money.new(100_000_00),
@@ -12,18 +14,30 @@ defmodule Amortisen.Price.CalculatorTest do
   }
 
   describe "#calculate_base_values/2" do
-    test "returns the structure with correct values" do
+    test "returns the correct values given a credit policy which finance iof" do
       credit_policy = %CreditPolicy{
         payment_lack_limit: 90,
-        interest_rate: Decimal.from_float(1.14)
+        interest_rate: Decimal.from_float(1.14),
+        has_financed_iof: true
       }
 
-      expected_struct = %{
-        outstanding_balance: Money.new(112_535_83),
-        installment_amount: Money.new(1_474_57)
+      result = Calculator.calculate_base_values(@price_input, credit_policy)
+
+      assert Money.new(112_535_83) == result.outstanding_balance
+      assert Money.new(1_474_57) == result.installment_amount
+    end
+
+    test "returns the correct values given a credit policy which doesn't finance iof" do
+      credit_policy = %CreditPolicy{
+        payment_lack_limit: 90,
+        interest_rate: Decimal.from_float(1.14),
+        has_financed_iof: false
       }
 
-      assert expected_struct == Calculator.calculate_base_values(@price_input, credit_policy)
+      result = Calculator.calculate_base_values(@price_input, credit_policy)
+
+      assert Money.new(108_632_09) == result.outstanding_balance
+      assert Money.new(1_423_42) == result.installment_amount
     end
   end
 
@@ -105,7 +119,8 @@ defmodule Amortisen.Price.CalculatorTest do
       assert %{
                line_index: 0,
                line_outstanding_balance: current_outstanding_balance,
-               amortization: nil
+               amortization: nil,
+               interest: @zero_money
              } == first_line
 
       assert %{

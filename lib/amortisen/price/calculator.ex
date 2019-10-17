@@ -6,7 +6,7 @@ defmodule Amortisen.Price.Calculator do
   alias Amortisen.Price.{Input}
   alias Amortisen.{CreditPolicy, FinancialTransactionTaxes}
 
-  @default_float_round 7
+  @default_float_round 11
   @days_in_financial_year 365
 
   def calculate_base_values(%Input{} = price_input, %CreditPolicy{} = credit_policy) do
@@ -16,7 +16,7 @@ defmodule Amortisen.Price.Calculator do
     initial_outstanding_balance = calculate_initial_outstanding_balance(price_input)
 
     # Valor financiado com juros
-    outstanding_balance_without_taxes =
+    outstanding_balance =
       calculate_outstanding_balance_with_interest(
         initial_outstanding_balance,
         price_input,
@@ -24,36 +24,65 @@ defmodule Amortisen.Price.Calculator do
       )
 
     # Taxa de juros por parcela
-    installment_interest_rate_without_taxes =
-      calculate_installment_interest_rate(price_input, interest_rate)
+    installment_interest_rate = calculate_installment_interest_rate(price_input, interest_rate)
 
-    # Valor da parcela sem IOF
-    installment_amount_without_taxes =
+    # Valor da parcela
+    installment_amount =
       calculate_installment_amount(
         initial_outstanding_balance,
-        installment_interest_rate_without_taxes
+        installment_interest_rate
       )
 
     # Amortizações
     amortization_table =
       calculate_amortizations(
-        installment_amount_without_taxes,
+        installment_amount,
         interest_rate,
-        outstanding_balance_without_taxes
+        outstanding_balance
       )
 
+    result = %{
+      interest_rate: interest_rate,
+      initial_outstanding_balance: initial_outstanding_balance,
+      outstanding_balance: outstanding_balance,
+      installment_amount: installment_amount,
+      installment_interest_rate: installment_interest_rate,
+      funded_taxes_total_value: Money.new(0),
+      amortization_table: amortization_table
+    }
+
+    if credit_policy.has_financed_iof do
+      update_values_with_iof(price_input, credit_policy, result)
+    else
+      result
+    end
+  end
+
+  def update_values_with_iof(
+        %Input{} = price_input,
+        %CreditPolicy{} = _credit_policy,
+        %{} = calculated_values
+      ) do
+    %{
+      initial_outstanding_balance: initial_outstanding_balance,
+      amortization_table: amortization_table,
+      interest_rate: interest_rate,
+      installment_interest_rate: installment_interest_rate
+    } = calculated_values
+
     # IOF por parcela
-    amortizatons_with_iof_tax = add_iof_tax_to_amortization_table(amortization_table, price_input)
+    amortizations_with_iof_tax =
+      add_iof_tax_to_amortization_table(amortization_table, price_input)
 
     # Total de IOF
     financed_iof_tax_amount =
-      calculate_financed_iof_tax(amortizatons_with_iof_tax, initial_outstanding_balance)
+      calculate_financed_iof_tax(amortizations_with_iof_tax, initial_outstanding_balance)
 
     outstanding_balance_without_interest =
       Money.add(initial_outstanding_balance, financed_iof_tax_amount)
 
     # Saldo devedor final
-    outstanding_balance =
+    outstanding_balance_with_iof =
       calculate_outstanding_balance_with_interest(
         outstanding_balance_without_interest,
         price_input,
@@ -61,16 +90,17 @@ defmodule Amortisen.Price.Calculator do
       )
 
     # Valor da Parcela final
-    installment_amount =
+    installment_amount_with_iof =
       calculate_installment_amount(
         outstanding_balance_without_interest,
-        installment_interest_rate_without_taxes
+        installment_interest_rate
       )
 
-    %{
-      outstanding_balance: outstanding_balance,
-      installment_amount: installment_amount
-    }
+    calculated_values
+    |> Map.put(:outstanding_balance, outstanding_balance_with_iof)
+    |> Map.put(:installment_amount, installment_amount_with_iof)
+    |> Map.put(:amortization_table, amortizations_with_iof_tax)
+    |> Map.put(:funded_taxes_total_value, financed_iof_tax_amount)
   end
 
   @doc """
@@ -163,7 +193,8 @@ defmodule Amortisen.Price.Calculator do
     initial_line = %{
       line_index: 0,
       line_outstanding_balance: current_outstanding_balance,
-      amortization: nil
+      amortization: nil,
+      interest: Money.new(0)
     }
 
     calculate_lines_amortization(initial_line, installment_amount, interest_rate)

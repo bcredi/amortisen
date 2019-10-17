@@ -1,6 +1,6 @@
 defmodule Amortisen.Price.Input do
   @type t :: %__MODULE__{
-          number_of_days_until_first_payment: Date.t(),
+          number_of_days_until_first_payment: integer(),
           user_requested_value: Money.t(),
           operation_cost_value: Money.t(),
           payment_term: integer()

@@ -7,9 +7,9 @@ defmodule Amortisen.Schedules.Line do
   ---
   date: Data de pagamento da parcela
   ---
-  interest: Juros reference a essa parcela
+  interest: Juros referente a essa parcela
   ---
-  principal: Valor amortizado // Installment value
+  principal: Valor amortizado
   ---
   life_insurance: Valor do Seguro de Vida
   ---
