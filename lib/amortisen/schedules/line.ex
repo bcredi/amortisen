@@ -24,7 +24,8 @@ defmodule Amortisen.Schedules.Line do
           principal: Money.t(),
           life_insurance: Money.t(),
           realty_insurance: Money.t(),
-          outstanding_balance: Money.t()
+          outstanding_balance: Money.t(),
+          iof: Money.t()
         }
 
   @enforce_keys [
@@ -41,6 +42,7 @@ defmodule Amortisen.Schedules.Line do
     :principal,
     :life_insurance,
     :realty_insurance,
-    :outstanding_balance
+    :outstanding_balance,
+    :iof
   ]
 end

@@ -27,37 +27,65 @@ defmodule Amortisen.Schedules.PriceTable do
 
   """
   def build_schedule_table(%Input{} = price_input, %CreditPolicy{} = credit_policy) do
-    calculated_values = Calculator.calculate_base_values(price_input, credit_policy)
+    calculated_data =
+      Calculator.calculate_base_values(price_input, credit_policy)
+      |> update_with_iof_policy(price_input, credit_policy)
 
     %Table{
-      schedule_lines: build_schedule_lines(calculated_values, price_input),
-      financial_transaction_taxes: calculated_values.funded_taxes_total_value
+      schedule_lines: build_schedule_lines(calculated_data, price_input),
+      financial_transaction_taxes: decimal_to_money(calculated_data.funded_taxes_total_value)
     }
   end
+
+  defp update_with_iof_policy(
+         lines,
+         %Input{} = input,
+         %CreditPolicy{has_financed_iof: true}
+       ) do
+    Calculator.update_lines_values_with_iof(input, lines)
+  end
+
+  defp update_with_iof_policy(lines, %Input{}, %CreditPolicy{has_financed_iof: false}), do: lines
 
   defp build_schedule_lines(price_base_values, price_input) do
     [_head | amortization_table] = price_base_values.amortization_table
 
+    build_schedule_line(price_base_values, amortization_table, 0, price_input)
+  end
+
+  defp build_schedule_line(price_base_values, amortization_table, 0, price_input) do
     [
-      build_first_line(price_base_values)
-      | build_schedule_line(price_base_values, amortization_table, 1, price_input)
-    ]
+      %Line{
+        date: Timex.today(),
+        interest: @default_zero,
+        principal: @default_zero,
+        life_insurance: @default_zero,
+        realty_insurance: @default_zero,
+        outstanding_balance: decimal_to_money(price_base_values.outstanding_balance),
+        iof: @default_zero
+      }
+    ] ++ build_schedule_line(price_base_values, amortization_table, 1, price_input)
   end
 
-  defp build_first_line(price_base_values) do
-    %Line{
-      date: Timex.today(),
-      interest: @default_zero,
-      principal: @default_zero,
-      life_insurance: @default_zero,
-      realty_insurance: @default_zero,
-      outstanding_balance: price_base_values.outstanding_balance
-    }
+  defp build_schedule_line(
+         price_base_values,
+         [amortization_line_info | other_lines],
+         line_index,
+         price_input
+       )
+       when length(other_lines) <= 0 do
+    [build_line(price_base_values, amortization_line_info, line_index, price_input)]
   end
-
-  defp build_schedule_line(_, [], _, _), do: []
 
   defp build_schedule_line(price_base_values, amortization_table, line_index, price_input) do
+    [amortization_line_info | amortizations_tail] = amortization_table
+
+    [
+      build_line(price_base_values, amortization_line_info, line_index, price_input)
+    ] ++ build_schedule_line(price_base_values, amortizations_tail, line_index + 1, price_input)
+  end
+
+  defp build_line(price_base_values, amortization_line_info, line_index, price_input) do
     installment_date =
       shift_schedule_line_date(
         line_index,
@@ -65,28 +93,29 @@ defmodule Amortisen.Schedules.PriceTable do
         price_input.number_of_days_until_first_payment
       )
 
-    [amortization_info_line | amortizations_tail] = amortization_table
-
     interest =
-      Money.subtract(
-        price_base_values.installment_amount,
-        amortization_info_line.amortization
-      )
+      Decimal.sub(price_base_values.installment_amount, amortization_line_info.amortization)
 
-    [
-      %Line{
-        date: installment_date,
-        interest: interest,
-        principal: amortization_info_line.amortization,
-        life_insurance: @default_zero,
-        realty_insurance: @default_zero,
-        outstanding_balance: amortization_info_line.line_outstanding_balance
-      }
-    ] ++ build_schedule_line(price_base_values, amortizations_tail, line_index + 1, price_input)
+    %Line{
+      date: installment_date,
+      interest: decimal_to_money(interest),
+      principal: decimal_to_money(amortization_line_info.amortization),
+      life_insurance: @default_zero,
+      realty_insurance: @default_zero,
+      outstanding_balance: decimal_to_money(amortization_line_info.line_outstanding_balance),
+      iof: decimal_to_money(Map.get(amortization_line_info, :iof, Decimal.from_float(0.00)))
+    }
   end
 
   defp shift_schedule_line_date(line_index, started_at, payment_lack_limit) do
     shifted_months = div(payment_lack_limit, 30) + (line_index - 1)
     Timex.shift(started_at, months: shifted_months)
+  end
+
+  defp decimal_to_money(decimal_value) do
+    decimal_value
+    |> Decimal.round(2)
+    |> Decimal.to_float()
+    |> Money.parse!()
   end
 end

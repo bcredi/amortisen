@@ -6,7 +6,6 @@ defmodule Amortisen.Price.Calculator do
   alias Amortisen.Price.{Input}
   alias Amortisen.{CreditPolicy, FinancialTransactionTaxes}
 
-  @default_float_round 11
   @days_in_financial_year 365
 
   def calculate_base_values(%Input{} = price_input, %CreditPolicy{} = credit_policy) do
@@ -41,28 +40,26 @@ defmodule Amortisen.Price.Calculator do
         outstanding_balance
       )
 
-    result = %{
+    # IOF por parcela
+    amortizations_with_iof_tax =
+      add_iof_tax_to_amortization_table(amortization_table, price_input)
+
+    # Total de IOF
+    financed_iof_tax_amount =
+      calculate_financed_iof_tax(amortizations_with_iof_tax, initial_outstanding_balance)
+
+    %{
       interest_rate: interest_rate,
       initial_outstanding_balance: initial_outstanding_balance,
       outstanding_balance: outstanding_balance,
       installment_amount: installment_amount,
       installment_interest_rate: installment_interest_rate,
-      funded_taxes_total_value: Money.new(0),
+      funded_taxes_total_value: financed_iof_tax_amount,
       amortization_table: amortization_table
     }
-
-    if credit_policy.has_financed_iof do
-      update_values_with_iof(price_input, credit_policy, result)
-    else
-      result
-    end
   end
 
-  def update_values_with_iof(
-        %Input{} = price_input,
-        %CreditPolicy{} = _credit_policy,
-        %{} = calculated_values
-      ) do
+  def update_lines_values_with_iof(%Input{} = price_input, %{} = calculated_values) do
     %{
       initial_outstanding_balance: initial_outstanding_balance,
       amortization_table: amortization_table,
@@ -79,7 +76,7 @@ defmodule Amortisen.Price.Calculator do
       calculate_financed_iof_tax(amortizations_with_iof_tax, initial_outstanding_balance)
 
     outstanding_balance_without_interest =
-      Money.add(initial_outstanding_balance, financed_iof_tax_amount)
+      Decimal.add(initial_outstanding_balance, financed_iof_tax_amount)
 
     # Saldo devedor final
     outstanding_balance_with_iof =
@@ -92,7 +89,7 @@ defmodule Amortisen.Price.Calculator do
     # Valor da Parcela final
     installment_amount_with_iof =
       calculate_installment_amount(
-        outstanding_balance_without_interest,
+        outstanding_balance_with_iof,
         installment_interest_rate
       )
 
@@ -103,11 +100,11 @@ defmodule Amortisen.Price.Calculator do
     |> Map.put(:funded_taxes_total_value, financed_iof_tax_amount)
   end
 
-  @doc """
-    PtBR: Valor solicitado pelo cliente + Custo da operação
-  """
   def calculate_initial_outstanding_balance(%Input{} = input) do
-    Money.add(input.user_requested_value, input.operation_cost_value)
+    user_requested_value = input.user_requested_value.amount |> Decimal.div(100)
+    operation_cost_value = input.operation_cost_value.amount |> Decimal.div(100)
+
+    Decimal.add(user_requested_value, operation_cost_value)
   end
 
   @doc """
@@ -121,10 +118,14 @@ defmodule Amortisen.Price.Calculator do
       %Money{}
 
   """
-  @spec calculate_outstanding_balance_with_interest(Money.t(), Amortisen.Price.Input.t(), number) ::
-          Money.t()
+  @spec calculate_outstanding_balance_with_interest(
+          Decimal.t(),
+          Amortisen.Price.Input.t(),
+          number
+        ) ::
+          Decimal.t()
   def calculate_outstanding_balance_with_interest(
-        %Money{} = outstanding_balance,
+        outstanding_balance,
         %Input{} = input,
         interest_rate
       ) do
@@ -132,7 +133,9 @@ defmodule Amortisen.Price.Calculator do
     exponent = input.number_of_days_until_first_payment / 30
     factor = :math.pow(base, exponent)
 
-    Money.multiply(outstanding_balance, factor)
+    factor
+    |> Decimal.from_float()
+    |> Decimal.mult(outstanding_balance)
   end
 
   @doc """
@@ -151,9 +154,9 @@ defmodule Amortisen.Price.Calculator do
   @spec calculate_installment_interest_rate(Amortisen.Price.Input.t(), number) :: float
   def calculate_installment_interest_rate(%Input{} = input, interest_rate)
       when interest_rate > 0 do
-    months_before_first_payment = input.number_of_days_until_first_payment / 30
-
     dividend_base = 1 + interest_rate
+
+    months_before_first_payment = input.number_of_days_until_first_payment / 30
     dividend_exponent = input.payment_term + months_before_first_payment
 
     dividend = :math.pow(dividend_base, dividend_exponent) * interest_rate
@@ -163,7 +166,7 @@ defmodule Amortisen.Price.Calculator do
 
     divisor = :math.pow(divisor_base, divisor_exponent) - 1
 
-    (dividend / divisor) |> Float.round(@default_float_round)
+    dividend / divisor
   end
 
   @doc """
@@ -179,22 +182,25 @@ defmodule Amortisen.Price.Calculator do
   """
   @spec calculate_installment_amount(Money.t(), number) :: Money.t()
   def calculate_installment_amount(outstanding_balance, installment_interest_rate) do
-    Money.multiply(outstanding_balance, installment_interest_rate)
+    outstanding_balance
+    |> Decimal.to_float()
+    |> Kernel.*(installment_interest_rate)
+    |> Decimal.from_float()
   end
 
   @doc """
   TODO
   """
   def calculate_amortizations(
-        %Money{} = installment_amount,
+        installment_amount,
         interest_rate,
-        %Money{} = current_outstanding_balance
+        current_outstanding_balance
       ) do
     initial_line = %{
       line_index: 0,
       line_outstanding_balance: current_outstanding_balance,
       amortization: nil,
-      interest: Money.new(0)
+      interest: Decimal.from_float(0.00)
     }
 
     calculate_lines_amortization(initial_line, installment_amount, interest_rate)
@@ -205,46 +211,52 @@ defmodule Amortisen.Price.Calculator do
   """
   def add_iof_tax_to_amortization_table(amortization_table, input) do
     # Ignore the head
-    [_ | amortization_lines] = amortization_table
+    [head | amortization_lines] = amortization_table
+    updated_head = Map.put(head, :iof, Decimal.from_float(0.00))
 
-    amortization_lines
-    |> Enum.map(&add_iof(&1, input.number_of_days_until_first_payment))
+    updated_lines =
+      amortization_lines
+      |> Enum.map(&add_iof(&1, input.number_of_days_until_first_payment))
+
+    [updated_head] ++ updated_lines
   end
 
   @doc """
   TODO
   """
-  def calculate_financed_iof_tax(amortizatons_with_iof_tax, initial_outstanding_balance) do
-    iof_amount =
-      calculated_iof_total_amount(amortizatons_with_iof_tax)
-      |> money_to_float()
+  def calculate_financed_iof_tax(amortizatons_with_iof_tax, outstanding_balance) do
+    iof_amount = calculated_iof_total_amount(amortizatons_with_iof_tax)
 
-    outstanding_balance = money_to_float(initial_outstanding_balance)
+    dividend = Decimal.mult(outstanding_balance, iof_amount)
+    divisor = Decimal.sub(outstanding_balance, iof_amount)
 
-    dividend = outstanding_balance * iof_amount
-    divisor = outstanding_balance - iof_amount
-
-    (dividend / divisor) |> float_to_money()
+    Decimal.div(dividend, divisor)
   end
 
   defp calculated_iof_total_amount(amortizatons_with_iof_tax) do
     amortizatons_with_iof_tax
-    |> Enum.reduce(Money.new(0_00), fn line, acc -> Money.add(acc, line.iof) end)
+    |> Enum.reduce(Decimal.new(0_00), fn line, acc -> Decimal.add(acc, line.iof) end)
   end
 
   defp calculate_lines_amortization(
-         %{line_outstanding_balance: %Money{amount: balance}} = previous_line,
+         %{line_outstanding_balance: %{sign: sign, coef: coef}} = previous_line,
          _,
          _
        )
-       when balance <= 0 do
-    [%{previous_line | line_outstanding_balance: Money.new(0)}]
+       when sign < 0 or coef == 0 do
+    [%{previous_line | line_outstanding_balance: Decimal.from_float(0.00)}]
   end
 
   defp calculate_lines_amortization(%{} = previous_line, installment_amount, interest_rate) do
-    part_01 = Money.multiply(previous_line.line_outstanding_balance, interest_rate)
-    amortization = Money.subtract(installment_amount, part_01)
-    next_outstading_balance = Money.subtract(previous_line.line_outstanding_balance, amortization)
+    part_01 =
+      previous_line.line_outstanding_balance
+      |> Decimal.to_float()
+      |> Kernel.*(interest_rate)
+      |> Decimal.from_float()
+
+    amortization = Decimal.sub(installment_amount, part_01)
+
+    next_outstading_balance = Decimal.sub(previous_line.line_outstanding_balance, amortization)
 
     next_line = %{
       line_index: previous_line.line_index + 1,
@@ -262,19 +274,24 @@ defmodule Amortisen.Price.Calculator do
         number_of_days_until_first_payment
       )
 
-    iof = FinancialTransactionTaxes.amortization_tax_amount(line.amortization, accumulated_days)
+    iof_money =
+      line.amortization
+      |> Decimal.to_float()
+      |> Money.parse!()
+      |> FinancialTransactionTaxes.amortization_tax_amount(accumulated_days)
 
+    iof = Decimal.div(iof_money.amount, 100)
     Map.put(line, :iof, iof)
   end
 
-  defp calculate_accumulated_days_until_installment_payment(
-         installment_number,
-         number_of_days_until_first_payment
-       ) do
-    round(number_of_days_until_first_payment / 30)
-    # Index 0 - Table header
-    |> Kernel.+(installment_number - 1)
-    |> accumulated_days
+  def calculate_accumulated_days_until_installment_payment(
+        installment_number,
+        number_of_days_until_first_payment
+      ) do
+    (installment_number - 1)
+    |> accumulated_days()
+    |> Kernel.+(number_of_days_until_first_payment)
+    |> normalize_days()
   end
 
   defp accumulated_days(0), do: 0
@@ -282,11 +299,6 @@ defmodule Amortisen.Price.Calculator do
   defp accumulated_days(i) when i * 30 > @days_in_financial_year, do: @days_in_financial_year
   defp accumulated_days(i), do: i * 30
 
-  defp money_to_float(%Money{} = money_value) do
-    money_value.amount / 100
-  end
-
-  defp float_to_money(value) when is_number(value) do
-    (value * 100) |> Kernel.trunc() |> Money.new()
-  end
+  defp normalize_days(amount) when amount >= @days_in_financial_year, do: @days_in_financial_year
+  defp normalize_days(amount), do: amount
 end
